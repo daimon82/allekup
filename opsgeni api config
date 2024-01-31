@@ -1,0 +1,15 @@
+{
+  "type": "Http",
+  "inputs": {
+    "uri": "https://api.opsgenie.com/v2/alerts",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json;Authorization: GenieKey eb243592-faa2-4ba2-a551q-1afdf565c889"
+    },
+    "body": "'{\n    \"message\": \"D365 Nie powstają zamówienia\",\n    \"alias\": \"D365 zamowienia sprzedazy alert 300124\",\n    \"description\":\"W D365 nie powstają nowe zamowienia sprzedazy\",\n    \"responders\":[\n\r        {\"name\":\"DAX-TECH\", \"type\":\"team\"}\r\n\r    ]\n\r\r}'"
+  },
+  "runAfter": {},
+  "metadata": {
+    "operationMetadataId": "22ebc326-7362-4391-9726-9ae59a165d86"
+  }
+}
