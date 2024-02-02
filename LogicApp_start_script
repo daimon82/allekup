@@ -1,0 +1,180 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "Condition": {
+                "actions": {},
+                "description": "Pozwolenie na start - Od poniedziałku do piątku lub w drugi weekend miesiąca start po 12h.",
+                "else": {
+                    "actions": {
+                        "Terminate_2": {
+                            "inputs": {
+                                "runStatus": "Cancelled"
+                            },
+                            "runAfter": {},
+                            "type": "Terminate"
+                        }
+                    }
+                },
+                "expression": {
+                    "or": [
+                        {
+                            "less": [
+                                "@dayOfWeek(utcNow())",
+                                6
+                            ]
+                        },
+                        {
+                            "and": [
+                                {
+                                    "equals": [
+                                        "@add(div(add(dayOfMonth(utcNow()),add(dayOfWeek(startOfMonth(utcNow())),-1)),7),1)",
+                                        "@parameters('UpdateSatWeekOfMonthNr')"
+                                    ]
+                                },
+                                {
+                                    "greater": [
+                                        "@convertTimeZone(utcNow(),'UTC','Central European Standard Time','HH')",
+                                        12
+                                    ]
+                                },
+                                {
+                                    "equals": [
+                                        "",
+                                        ""
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "runAfter": {},
+                "type": "If"
+            },
+            "Function-Catch": {
+                "actions": {
+                    "Terminate": {
+                        "inputs": {
+                            "runError": {
+                                "code": "@{outputs('Scheduled')['statusCode']}",
+                                "message": "@{body('Scheduled')}"
+                            },
+                            "runStatus": "Failed"
+                        },
+                        "runAfter": {},
+                        "type": "Terminate"
+                    }
+                },
+                "runAfter": {
+                    "Function-Try": [
+                        "Failed",
+                        "Skipped",
+                        "TimedOut"
+                    ]
+                },
+                "type": "Scope"
+            },
+            "Function-Success": {
+                "actions": {},
+                "runAfter": {
+                    "Function-Try": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Scope"
+            },
+            "Function-Try": {
+                "actions": {
+                    "Scheduled": {
+                        "inputs": {
+                            "body": {
+                                "Action": "start",
+                                "EnableClassic": false,
+                                "RequestScopes": {
+                                    "ExcludedVMLists": [
+                                        "ALE-DEV-22*",
+                                        "ALE-DEV-23*",
+                                        "ALE-DEV-24*",
+                                        "ALE-DEV-25*",
+                                        "ALE-SBX-VOY-41"
+                                    ],
+                                    "Subscriptions": [
+                                        "/subscriptions/d71b3051-7c4a-4e8b-a5b3-751de0e6987a/"
+                                    ]
+                                }
+                            },
+                            "function": {
+                                "id": "/subscriptions/d71b3051-7c4a-4e8b-a5b3-751de0e6987a/resourceGroups/Start_Stop_v2/providers/Microsoft.Web/sites/StartStopAppthn4qjh7vlmd2/functions/Scheduled"
+                            }
+                        },
+                        "runAfter": {},
+                        "type": "Function"
+                    }
+                },
+                "runAfter": {
+                    "Condition": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Scope"
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "parameters": {
+            "UpdateSatWeekOfMonthNr": {
+                "defaultValue": 2,
+                "type": "Int"
+            }
+        },
+        "triggers": {
+            "Recurrence": {
+                "evaluatedRecurrence": {
+                    "frequency": "Week",
+                    "interval": 1,
+                    "schedule": {
+                        "hours": [
+                            "7",
+                            "17"
+                        ],
+                        "minutes": [
+                            0
+                        ],
+                        "weekDays": [
+                            "Monday",
+                            "Tuesday",
+                            "Wednesday",
+                            "Thursday",
+                            "Friday",
+                            "Saturday"
+                        ]
+                    },
+                    "timeZone": "Central European Standard Time"
+                },
+                "recurrence": {
+                    "frequency": "Week",
+                    "interval": 1,
+                    "schedule": {
+                        "hours": [
+                            "7",
+                            "17"
+                        ],
+                        "minutes": [
+                            0
+                        ],
+                        "weekDays": [
+                            "Monday",
+                            "Tuesday",
+                            "Wednesday",
+                            "Thursday",
+                            "Friday",
+                            "Saturday"
+                        ]
+                    },
+                    "timeZone": "Central European Standard Time"
+                },
+                "type": "Recurrence"
+            }
+        }
+    },
+    "parameters": {}
+}
