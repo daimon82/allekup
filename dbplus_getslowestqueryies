@@ -1,0 +1,26 @@
+SELECT (select top(1) t9.c1 as c1 from dbplus_tab9 t9 with(index(dbplus_tab9_idx1)) where stat1.num1 = t9.num1 and t9.server_id = 1 and datalength(c1) > 0) as c1, 
+                            stat1.num1 AS query_hash, 
+                            stat1.sum_elapsed_s,
+							stat1.sum_elapsed_s,
+							stat1.cpu_time,
+							stat1.executions,
+							stat1.time_per_exec,
+							stat1.buffer_get,
+							stat1.rows_processed,
+							stat1.bufferwrites
+							FROM ( 
+                                                SELECT num1, Sum(num3)/1000000 as sum_elapsed_s, Sum(num4)/1000000 as cpu_time , Sum(num5) num5 , 
+                                                Sum(num6) num6, Sum(num7) executions, Sum(num3)/1000000/sum(num7) as time_per_exec,
+                                                Sum(num8) num8, Sum(num9) buffer_get, sum(num10) as rows_processed, sum(num30) as bufferwrites
+                                                
+                                                FROM dbplus_tab8 t8 
+                                                WHERE t8.server_id = 1
+                                                    AND t8.dat1 >= '2024-03-26 00:00:00'
+                                                    AND t8.dat1 < '2024-04-01 23:59:00'
+													
+                                                    
+                                                AND t8.num13 > 0 
+                                                GROUP BY num1
+                                                HAVING sum(num3) > 200000000
+												and sum(num7) >0
+                                        ) stat1 
