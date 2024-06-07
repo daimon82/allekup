@@ -1,0 +1,59 @@
+USE [RVS_AX63PROD]
+GO
+/****** Object:  StoredProcedure [dbo].[killdeadaxsessions_proc]    Script Date: 07.06.2024 14:47:28 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+ALTER procedure [dbo].[killdeadaxsessions_proc] as
+	--Skrypt napisany przez Tomasz Pankowski
+	--Jego zadaniem jest zabicie zawieszonych sesji ax które nie są automatycznie zabijane na sql-u
+	--Do poprawnego działania wymaga aby na wszystkich aos ustawiony został:
+	--HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\services\Dynamics Server\6.0\01\* Create a string registry value called ‘connectioncontext’ and set the value to 1.
+
+	if  object_id('tempdb.dbo.#axsessions_temp') is not null drop table #axsessions_temp
+
+	-- Listowanie martwych sesji ax i zapis do #axsessions_temp
+select
+	ROW_NUMBER() OVER (ORDER BY (SELECT 1)) AS nr,GETDATE() as killtime,
+	t.name,t.transaction_type, t.transaction_state,
+	s.transaction_id,s.session_id,
+	s.elapsed_time_seconds/60/60.0 as hours_tran_has_been_open,  p.status as exec_status, p.cmd
+	,cast(es.context_info as varchar(128)) as ci, es.nt_user_name,es.status,es.cpu_time,es.total_elapsed_time,es.logical_reads,es.writes,es.host_name
+into #axsessions_temp
+from sys.dm_tran_active_transactions t
+  join sys.dm_tran_active_snapshot_database_transactions s
+     on t.transaction_id = s.transaction_id
+  join sys.sysprocesses p
+     on p.spid = s.session_id
+left join sys.dm_exec_sessions es
+on s.session_id = es.session_id
+where 
+nt_user_name = '_prod_axaos'
+and s.elapsed_time_seconds/60/60.0 >1
+
+
+	-- Uruchomienie KILL dla spid sesji w pętli while
+	DECLARE @RowCnt INT;
+	DECLARE @nr INT = 1;
+	DECLARE @cmd NVARCHAR(500);
+ 
+	SELECT @RowCnt = COUNT(*) FROM #axsessions_temp
+ 
+	WHILE @nr <= @RowCnt
+	BEGIN
+	   SELECT @cmd = 'kill ' + cast([session_id] as nvarchar)
+		  FROM #axsessions_temp WHERE nr = @nr
+ 
+	   exec sp_executesql @cmd
+ 
+	   SET @nr += 1
+	END
+
+	-- Logowanie do bazy RVS
+	insert into [RVS_AX63PROD].dbo.killed_axsessions_log
+	select * from #axsessions_temp
+
+	-- Sprzątanie
+	drop table #axsessions_temp
