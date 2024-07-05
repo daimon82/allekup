@@ -1,0 +1,77 @@
+$mainpath = 'C:\powershell\posnet'
+$posnet = join-path $mainpath 'posnet-arch-agent'
+$outputpath = join-path $mainpath 'arch'
+$logpath = join-path $mainpath 'log'
+$logpath = join-path $mainpath 'workdir'
+
+$printers = @('0.0.0.0','172.18.0.0','172.18.0.0')
+#Start-Job $ScriptBlock -name $printers[0] -ArgumentList $posnet,$printers[0]
+
+$ScriptBlock = {
+    param(
+        [string]$posnet,
+        [string]$printerIp
+    )
+    Write-Host "[processing '$printerIp']"
+    $posnetexe = join-path $posnet 'posnet-arch-agent.exe'
+    $repackexe = join-path $posnet 'posnet-arch-repack.exe'
+    $outname = $printerIp.replace('.','-') + '.zip'
+    $repackname = $printerIp.replace('.','-') + '-torepack.zip'
+
+    $parentpath = (Get-Item $posnet).parent.fullname
+    $workpath = join-path $parentpath 'workdir'
+    $outfile = join-path $workpath $outname
+    $repackfile = join-path $workpath $repackname
+    $archpath = join-path $parentpath 'arch'
+    $archfile = join-path $archpath $outname
+
+    $agentcmd = "$posnetexe -rodzaj IP -parametry $($printerIp):2121 -archiwum $outfile"
+    write-host $agentcmd
+    cmd /c $agentcmd
+
+    #Uruchamiam repack jeśli potrzebny
+    $outSize    = (get-item $outfile -ErrorAction SilentlyContinue).Length
+    $repackSize = (get-item $repackfile -ErrorAction SilentlyContinue).Length
+    $archSize = (get-item $archfile -ErrorAction SilentlyContinue).Length
+
+    #Uruchom repack tylko gdy plik większy od 512MB i 
+    if ($outSize -gt 512000000 -and $repackSize - $outSize -gt 100000000 ){
+        remove-item $repackfile -ErrorAction SilentlyContinue
+        move-item $outfile $repackfile
+        $repackcmd = "$repackexe -nadpisz $repackfile $outfile"
+        write-host $repackcmd
+        cmd /c $repackcmd
+    }
+    if ($outfile -gt $archfile){
+        copy-item $outfile $archfile -Force
+    }
+}
+
+get-job -State 'Completed' | Remove-job
+$printers | %{
+  Write-Host "processing $_..."
+  if (!(get-job -Name $_ -ErrorAction SilentlyContinue)){
+        Start-Job $ScriptBlock -name $_ -ArgumentList $posnet, $_ 
+   }
+}
+
+$jobs = get-job
+
+# Monitor jobs
+while ($jobs.Count -gt 0) {
+    foreach ($job in $jobs) {
+        $output = ""
+        $output = Receive-Job -Job $job
+        if ($output -ne $null) {
+            $output = $output.split([Environment]::NewLine)
+            Write-Output "$($job.Name) State: $($job.State) Output: $($output[$output.count-1])"
+        }
+        if ($job.State -ne 'Running') {
+            Write-Output "Removing job: $($job.Name) $($job.State)"
+            remove-job -Id $job.Id
+            $jobs = $jobs | where($_.id -ne $job.id)
+        }
+    }
+    write-host " "
+    Start-Sleep -Seconds 30
+}
