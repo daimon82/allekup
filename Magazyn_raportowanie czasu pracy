@@ -1,0 +1,82 @@
+declare @poczatek DATETIME = '2024-08-09T04:00:00.000Z';
+declare @koniec DATETIME = '2024-08-09T18:59:59.999Z';
+WITH workline AS (
+    SELECT
+      wl.UserId,
+      wu.UserName,
+      wl.DataAreaId,
+      wl.partition,
+      CASE
+        WHEN WMSLOCATIONID LIKE '1M0%' THEN 'PARTER'
+        WHEN WMSLOCATIONID LIKE '1M1%' THEN '1 PIETRO'
+        WHEN WMSLOCATIONID LIKE '1M2%' THEN '2 PIETRO'
+        ELSE 'POZA MEZANIN' END AS 'LOC_TYPE',
+      wl.WorkClosedUTCDateTime as start_time,
+      wl.WorkClosedUTCDateTime as end_Time,
+      ROW_NUMBER() OVER (
+          PARTITION BY wl.USERID
+          ORDER BY wl.WorkClosedUTCDateTime
+       ) row_num
+    FROM
+      WHSWORKLINE wl
+    join WHSWorkUser wu 
+        on wl.UserId = wu.UserId and wl.DataAreaId = wu.DataAreaId and wl.PARTITION = wu.PARTITION
+    WHERE
+        wl.WMSLOCATIONID NOT IN ('LADM_OUT')
+        and WorkClosedUTCDateTime >= @poczatek 
+        and WorkClosedUTCDateTime <= @koniec
+        and wl.userid = '3100292')
+,SessionCTE as(
+    SELECT
+        UserId,
+        UserName,
+        DataAreaId,
+        partition,
+        LOC_TYPE,
+        start_time,
+        end_time,
+        row_num
+    FROM
+        workline
+    WHERE
+        row_num = 1
+UNION ALL
+    SELECT
+        t.userid,
+        t.UserName,
+        t.DataAreaId,
+        t.partition,
+        t.LOC_TYPE,
+    CASE 
+        WHEN t.LOC_TYPE = cte.LOC_TYPE THEN cte.start_time
+        ELSE t.end_time
+    END AS end_time,
+        t.start_time,
+        t.ROW_NUM
+    FROM
+        WORKLINE t
+    JOIN
+        SessionCTE cte
+    ON
+        t.userid = cte.userid AND
+        t.DataAreaId = cte.DataAreaId AND
+        t.partition = cte.partition AND
+        t.row_num = cte.row_num + 1
+)   
+SELECT 
+    userid,
+    LOC_TYPE,
+    DataAreaId,
+    start_time,
+    MAX(end_time) AS end_time
+FROM
+    SessionCTE 
+GROUP BY 
+    userid, 
+    LOC_TYPE,
+    DataAreaId,
+    start_time
+ORDER BY
+    userid,
+    start_time
+OPTION (MAXRECURSION 0)
