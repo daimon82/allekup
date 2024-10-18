@@ -1,0 +1,25 @@
+get-dfsrstate -ComputerName $($env:COMPUTERNAME) | Format-Table FileName,UpdateState,Inbound,Source* -Auto -Wrap
+
+
+$dirs = (Get-ChildItem "D:\DFS\EtailArchiwum_data").name
+
+foreach ($dir in $dirs){
+    write-host $dir
+    $destination = "D:\DFS\EtailArchiwum_data\$dir"
+    $source = "\\S44871\d$\DFS\EtailArchiwum_data\$dir"
+    robocopy $source $destination /e /b /copyall /r:6 /w:5 /MT:64 /xd DfsrPrivate 
+    #robocopy $source $destination /E /XX /XC /XN /XO /NS /NDL /NJH /copyall /xd DfsrPrivate 
+    #test-path -path "D:\DFS\EtailArchiwum_data\AX_invoice\20240927\attachbin PAR24-1393752 (eParagon) C372625B-3457-48B4-A70C-B1539A0589CF"
+}
+
+
+$dirs2 = (Get-ChildItem "D:\DFS\EtailProfilesWTS_data").name
+
+foreach ($dir in $dirs2){
+    write-host $dir
+    $destination = "D:\DFS\EtailProfilesWTS_data\$dir"
+    $source = "\\S44871\d$\DFS\EtailProfilesWTS_data\$dir"
+    robocopy $source $destination /e /b /copyall /r:6 /w:5 /MT:64 /xd DfsrPrivate 
+    #robocopy $source $destination /E /XX /XC /XN /XO /NS /NDL /NJH /copyall /xd DfsrPrivate 
+    #test-path -path "D:\DFS\EtailArchiwum_data\AX_invoice\20240927\attachbin PAR24-1393752 (eParagon) C372625B-3457-48B4-A70C-B1539A0589CF"
+}
