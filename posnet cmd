@@ -1,0 +1,28 @@
+@echo off
+setlocal EnableDelayedExpansion
+set printers=172.18.84.61 172.18.84.72 172.18.84.76
+
+FOR %%A IN (%printers%) DO (
+	set ip=%%A
+	set name=!ip:.=-!
+	echo.Rozpoczynam sciaganie z drukarki !ip! do !name!.zip
+	call C:\powershell\posnet\posnet-arch-agent-3.1.0.13-20191102\posnet-arch-agent.exe -rodzaj IP -parametry !ip!:2121 -archiwum c:\powershell\posnet\workdir\!name!.zip
+)
+
+FOR %%A IN (%printers%) DO (
+	set ip=%%A
+	set name=!ip:.=-!
+	echo.Rozpoczynam sprawdzanie i kompresje archiwum
+	call "C:\Program Files\7-Zip\7z.exe" t C:\powershell\posnet\workdir\!name!.zip
+	if %errorlevel%==0 (
+		echo.!name!.zip archiwum ok
+		call C:\powershell\posnet\posnet-arch-agent-3.1.0.13-20191102\posnet-arch-repack.exe -nadpisz -postep c:\powershell\posnet\workdir\!name!.zip c:\powershell\posnet\workdir\!name!-repack.zip
+		del C:\powershell\posnet\arch\!name!.zip /q
+		move c:\powershell\posnet\workdir\!name!-repack.zip C:\powershell\posnet\workdir\!name!.zip
+ 		copy C:\powershell\posnet\workdir\!name!.zip C:\powershell\posnet\arch\!name!.zip
+	) else (
+		echo.!name!.zip archiwum skorumpowane, przywracam z backupu
+		del c:\powershell\posnet\workdir\!name!.zip /q
+		copy C:\powershell\posnet\arch\!name!.zip c:\powershell\posnet\workdir\!name!.zip
+	)
+)
