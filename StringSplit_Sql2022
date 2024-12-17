@@ -1,0 +1,19 @@
+USE [synapsetest]
+GO
+/****** Object:  UserDefinedFunction [dbo].[SplitStrings_Ordered]    Script Date: 17.12.2024 09:35:22 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER FUNCTION [dbo].[SplitStrings_Ordered]
+(
+  @String      nvarchar(max),
+  @Delim nchar(1)
+)
+RETURNS table WITH SCHEMABINDING
+AS
+  RETURN
+  (
+    SELECT value, ordinal = [key]
+    FROM OPENJSON(N'["' + REPLACE(@String, @Delim, N'","') + N'"]') AS x
+  );
