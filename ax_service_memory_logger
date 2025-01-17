@@ -1,0 +1,103 @@
+$ComputerName = '',''
+$params = @{'server'='';'Database'=''}
+$logpath = 'C:\AX\powershell\memoryscan.log'
+
+Get-Date |out-file -FilePath $logpath
+
+function Get-Tasklist {
+    [CmdletBinding()]
+     Param (
+        [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true,Position=0)] [string[]]$ComputerName
+     )
+    Begin {           
+        [string[]]$result = ""
+    }
+    
+    Process {
+        foreach ($c in $ComputerName) {
+            Write-Verbose -Message "checking $c"
+            $result = echo a | tasklist /v /s "$c" /fi "imagename eq ax32serv.exe"
+            if (!$?){                         
+                Write-Warning "Tasklist failed. $c"
+                "Tasklist failed. $c" |out-file -FilePath $logpath -Append
+                continue
+            }
+            if ($result[0].Length -ge 50){
+                if ($result[0].Substring(0,5) -like 'INFO:'){
+                    Write-Warning "Brak wyników. $c"
+                    "Brak wyników. $c" |out-file -FilePath $logpath -Append
+                    continue
+                }
+            }
+             $format = $result[2] | ConvertFrom-String | measure -Property * -Character | select property, characters
+             foreach ($r in $result){
+                if ($r.length -eq 0){
+                    Write-Verbose 'Hitting a blank line'
+                    continue
+                }
+                if ($r -match '^(===)+' -or $r -match '^Image\sName\s+PID'){
+                    Write-Verbose 'Hitting the headers'
+                    continue
+                } else {
+                    Write-Verbose -Message "checking $r"
+                    [int]$StringPosition = 0
+                    [int]$FieldCount = 0
+                    $ImageName = ($r.Substring($StringPosition,$format[$FieldCount].characters)).Trim()
+                            $StringPosition = $StringPosition + $format[$FieldCount].characters + 1
+                            $FieldCount = $FieldCount +1
+                    $ProcessID = ($r.Substring($StringPosition,$format[$FieldCount].characters)).Trim()
+                        $StringPosition = $StringPosition + $format[$FieldCount].characters +1
+                        $FieldCount = $FieldCount +1
+                    $SessionName = ($r.Substring($StringPosition,$format[$FieldCount].characters)).Trim()
+                        $StringPosition = $StringPosition + $format[$FieldCount].characters +1
+                        $FieldCount = $FieldCount +1
+                    $Session = ($r.Substring($StringPosition,$format[$FieldCount].characters)).Trim()
+                        $StringPosition = $StringPosition + $format[$FieldCount].characters+1
+                        $FieldCount = $FieldCount +1
+                    $MemUsage = ($r.Substring($StringPosition,$format[$FieldCount].characters)).Trim()
+                        $StringPosition = $StringPosition + $format[$FieldCount].characters+1
+                        $FieldCount = $FieldCount +1
+                    $UserName = ($r.Substring($StringPosition,$format[$FieldCount].characters)).Trim()
+                        $StringPosition = $StringPosition + $format[$FieldCount].characters+1
+                        $FieldCount = $FieldCount +1
+                    $CPUTime = ($r.Substring($StringPosition,$format[$FieldCount].characters)).Trim()
+                        $StringPosition = $StringPosition + $format[$FieldCount].characters+1
+                        $FieldCount = $FieldCount +1
+                    $time = (get-date (Get-Date).touniversaltime() -Format "yyyy-MM-dd HH:mm")
+                    $MemUsage_MB = $MemUsage.Replace('˙','').Replace('K','').Replace(' ','').replace(' ','')
+                    $MemUsage_MB = [math]::Round([int]$MemUsage_MB/1024)
+                    $ENV = If ($UserName -like '*WMS*'){'WMS'} else {'ETAIL'}
+                    $prop = [ordered]@{
+                        'ComputerName' = $c
+                        'ImageName' = $ImageName
+                        'PID' = $ProcessID
+                        #'SessionName' = $SessionName
+                        'Session#' = $Session
+                        'MemUsage' = $MemUsage
+                        'MemUsage_MB' = $MemUsage_MB
+                        #'Status' = $Status
+                        'UserName' = $UserName
+                        'Env' = $ENV
+                        'CPUTime' = $CPUTime
+                        'Time' = $time
+                        #'WindowTitle' = $WindowTitle      
+                    } #End of $prop block
+                    $ProcObj = New-Object -TypeName psobject -Property $prop
+                    Write-Output $ProcObj
+                } #End of else block
+            } #End of foreach block of result text parsing 
+        } #End of foreach block for computers
+    } #End of process block
+} #End of function
+
+$AOSlist = Get-Tasklist -ComputerName $ComputerName
+$InsertResults = "INSERT INTO [].[dbo].[AXserv_memory](SERVER,ENV,DATECREATED,USERNAME,MEMORY,CPU) VALUES "
+foreach($AOS in $AOSlist){
+    $InsertResults += "('$($AOS.computername)','$($AOS.ENV)','$($AOS.time)','$($AOS.UserName)','$($AOS.MemUsage_MB)','$($AOS.CPUTime)'),"
+}
+$InsertResults = $InsertResults -Replace ".$"
+
+write-host $InsertResults
+$InsertResults |out-file -FilePath $logpath -Append
+
+Invoke-sqlcmd @params -Query $InsertResults
