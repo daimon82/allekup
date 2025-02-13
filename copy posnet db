@@ -1,0 +1,30 @@
+$posnetFolder = Join-Path -Path $env:USERPROFILE -ChildPath "\AppData\Local\POSNET"
+$posnetBackFolder = Join-Path -Path $env:USERPROFILE -ChildPath "\AppData\Local\posnet_back"
+$sourcePosnet = "C:\Users\lukasz.szuba\AppData\Local\POSNET"
+
+$processName = "posnet_pop.exe"
+$userName = "lukasz.szuba","$env:username"
+$currentuserName = "$env:username"
+
+$processes = Get-WmiObject -Class Win32_Process
+
+foreach ($process in $processes) {
+    if ($process.Name -eq $processName) {
+        $owner = ($process.GetOwner()).user
+
+        if ($owner -in $userName) {
+            Write-Host "User $owner ma uruchomiony proces '$processName', uruchom kopiowanie gdy $owner zamknie aplikację."
+            pause
+            exit
+        }
+    }
+}
+
+if ( Test-Path -Path $sourcePosnet)  {
+    if (Test-Path -Path $posnetBackFolder) { Remove-Item -Path $posnetBackFolder -Recurse -Force }
+    if (Test-Path -Path $posnetFolder) { move-Item -Path $posnetFolder $posnetBackFolder }
+    Copy-Item -Path $sourcePosnet -Destination $posnetFolder -Recurse -Force
+    Write-Host "Skopiowano archiwum posnet"
+} else {
+    Write-Host "brak wymaganego katalogu $sourcePosnet"
+}
