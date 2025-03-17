@@ -1,0 +1,54 @@
+drop table #comp
+use synapse_csv
+DECLARE @inputString VARCHAR(max) = 'deliverypackageapptlines,inventdim,inventsum,mcrholdcodetrans,merxserverparameter,merxtable,merxtablefield,purchtable,salestable,tmsappointment,tmssalestable,whasalesprocessingdate,whashipmentpackingpackageitem,whashipmentpackingpackages,whatmsappointmentpurchases,whaworkcreateinboundregistry,whaworkcreatemovementregistry,whaworkinboundmovementlinkregistry,whscontainertable,whsloadline,whsloadtable,whsshipmenttable,whsworkexceptionlog,whsworkline,whsworktable'
+declare @sql varchar(max)
+create table #comp (
+	name varchar(100),
+	csv bigint,
+	etdl bigint
+)
+
+insert into #comp (name,csv,etdl)
+select name,0,0
+FROM [synapse_csv].sys.tables as t where 
+t.name not like '_cdc_%' and
+t.name not like '_new_%' and
+t.schema_id = 1
+and t.name in (select value from string_split(@inputString,',')) --jesli chcesz tyko tabele sychronizowane co 10min
+
+use synapse_csv
+EXEC sp_MSForEachTable @command1='IF (EXISTS ( SELECT 1 FROM #comp WHERE name = PARSENAME(''?'', 1) ) and exists (select 1 from sys.tables as t where t.name = PARSENAME(''?'', 1) ) ) update #comp set csv = (select count(*) from ? ) where name=PARSENAME(''?'', 1)'
+use ETDL_PROD
+EXEC sp_MSForEachTable @command1='IF (EXISTS ( SELECT 1 FROM #comp WHERE name = PARSENAME(''?'', 1) ) and exists (select 1 from sys.tables as t where t.name = PARSENAME(''?'', 1) ) ) update #comp set etdl = (select count(*) from ? ) where name=PARSENAME(''?'', 1)'
+use synapse_csv
+
+select *,etdl-csv as missingInCSV, 
+'select * from [ETDL_PROD].dbo.'+name+' as etdl
+left join '+name+' as csv
+on csv.recid = etdl.recid
+where csv.recid is null' as listMissing,
+
+'select '''+name+''' as name, min(etdl.LastProcessedChange_DateTime) as fromD, max(etdl.LastProcessedChange_DateTime) as toD
+from [ETDL_PROD].dbo.'+name+' as etdl
+left join '+name+' as csv
+on csv.recid = etdl.recid
+where csv.recid is null' as listDates,
+
+'declare @ver as bigint;
+select @ver=max(versionnumber) from whaconvtransport 
+	where recid < (
+		select min(etdl.recid) from [ETDL_PROD].dbo.'+name+' as etdl
+		left join '+name+' as csv
+		on csv.recid = etdl.recid
+		where csv.recid is null);
+update [synapse_csv].[dvtosql].[_controltableforcopy]
+	set lastbigintmarker=@ver 
+	where tablename='''+name+''';' as fixsync,
+
+'delete from [synapse_csv].[dvtosql].[_controltableforcopy]
+where tablename='''+name+''';
+if exists (select 1 from sys.tables where name = '''+name+''') drop table '+name+';
+if exists (select 1 from sys.tables where name = ''_cdc_'+name+''') drop table _cdc_'+name+';
+'as resetsync
+from #comp where csv<etdl
+order by missingInCSV desc
