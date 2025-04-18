@@ -1,0 +1,28 @@
+DECLARE @DatabasesToResume TABLE (database_name sysname)
+
+INSERT INTO @DatabasesToResume (database_name)
+SELECT DISTINCT db_name(drs.database_id)
+FROM sys.dm_hadr_database_replica_states AS drs
+WHERE drs.is_local = 1
+  AND drs.synchronization_state_desc NOT IN ('SYNCHRONIZED', 'SYNCHRONIZING')
+
+DECLARE @dbName sysname
+DECLARE @sql NVARCHAR(MAX)
+
+DECLARE db_cursor CURSOR FOR
+SELECT database_name FROM @DatabasesToResume
+
+OPEN db_cursor
+FETCH NEXT FROM db_cursor INTO @dbName
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    SET @sql = N'ALTER DATABASE [' + @dbName + '] SET HADR RESUME'
+    PRINT 'Resuming data movement for: ' + @dbName
+    EXEC sp_executesql @sql
+
+    FETCH NEXT FROM db_cursor INTO @dbName
+END
+
+CLOSE db_cursor
+DEALLOCATE db_cursor
