@@ -1,0 +1,109 @@
+#$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri https://aka.ms/installazurecliwindowsx64 -OutFile .\AzureCLI.msi; Start-Process msiexec.exe -Wait -ArgumentList '/I AzureCLI.msi /quiet'; Remove-Item .\AzureCLI.msi
+#Install-Module -name az -scope currentuser -Repository PSGallery -Force
+#import-module az
+#connect-azaccount
+
+#002: 
+<#
+$containerName = 'dataverse-aleerp-unqd65da5cb05abef118a66000d3a3a0'
+$destinationContainerName = 'dataverse-aleerp-unqd65da5cb05abef118a66000d3a3a0-arch'
+$resourceGroupName = 'ale-whs-etdl-rg-prod-we-002'
+$storageAccountName = 'alewhsetdlsynwprdwe002'
+$retention = 13
+#>
+
+#ERP:
+
+$containerName = 'dataverse-aleerp-unqd65da5cb05abef118a66000d3a3a0'
+$destinationContainerName = 'dataverse-aleerp-unqd65da5cb05abef118a66000d3a3a0-arch'
+$resourceGroupName = 'erp-d365-synapse'
+$storageAccountName = 'erpd365synapse'
+$retention = 7
+
+$cutoffDate = (get-date).adddaYs(-$retention)
+
+write-host "Resource group: $resourceGroupName retention: $retention days, cut off date: $cutoffDate"
+write-host "Listing all blobs from $storageAccountName : " -NoNewline
+$ctx = (Get-AzStorageAccount -ResourceGroupName $resourceGroupName -Name $storageAccountName).Context
+$blobs = Get-AzStorageBlob -Container $containerName -Context $ctx 
+write-host $blobs.count
+
+write-host "Filtering blobs: only data folders: " -NoNewline
+$blobs = $blobs |where{$_.Name -match "^\d{4}-\d{2}-\d{2}T\d{2}\.\d{2}\.\d{2}Z.*$"}
+write-host $blobs.count
+
+
+write-host "Filtering blobs: root data folders: "  -NoNewline
+$blobsRoot = $blobs |where{$_.Name -match "^\d{4}-\d{2}-\d{2}T\d{2}\.\d{2}\.\d{2}Z$"}
+write-host $blobsRoot.count
+
+write-host "Filtering blobs: root data folders older than $retention days: " -NoNewline
+foreach ($blob in $blobsRoot) {
+	$bName = $blob.Name
+    $normalized = $bName -replace "\.", ":" ;	
+	$folderDate = [datetime]$normalized
+	if ($folderDate -gt $cutoffDate) {
+		$blobsRoot = $blobsRoot | Where-Object { $_.Name -ne $bName }
+	}
+}
+write-host $blobsRoot.count
+
+write-host "Filtering blobs: listing files to move: " -NoNewline
+$filteredBlobs = $blobs | Where-Object {
+    $mainPrefix = $_.Name.Split("/")[0]
+    $blobsRoot.Name -contains $mainPrefix
+}
+$blobfiles = $filteredBlobs |where{$_.Name -match "\.[a-z]{3,4}$"}
+$filecount = $blobfiles.count
+write-host $filecount
+
+write-host "Moving blobs:"
+
+$progressBag = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+
+$blobfiles | ForEach-Object -parallel {
+    $blob = $_
+	$bName = $blob.name
+    $bag = $using:progressBag
+    $bag.Add($bName)
+    $remaining = $using:filecount - $bag.count
+	write-host $remaining $bName
+
+	if ($bName -notlike "*Microsoft.Athena.TrickleFeedService*"){
+		$copyState = Start-AzStorageBlobCopy -SrcBlob $bName -SrcContainer $using:containerName -DestContainer $using:destinationContainerName -DestBlob $bName -Context $using:ctx -Force
+		while (($copyState | Get-AzStorageBlobCopyState).Status -eq "Pending") { Start-Sleep -milliSeconds 100 }
+		if (($copyState | Get-AzStorageBlobCopyState).Status -eq "Success") {
+			Remove-AzStorageBlob -Blob $bName -Container $using:containerName -Context $using:ctx -Force
+		}
+	} else {
+		if ($blob.BlobProperties.LeaseState -eq 'Leased') { $rem = $blob.ICloudBlob.BreakLease()}
+		Remove-AzStorageBlob -Blob $bName -Container $using:containerName -Context $using:ctx -Force
+	}
+} -ThrottleLimit 20
+write-host "Moving blobs older than $cutoffDate completed"
+
+
+#write-host "Listing blobs again from $storageAccountName : " -NoNewline
+#$blobs = Get-AzStorageBlob -Container $containerName -Context $ctx 
+#write-host $blobs.count
+
+write-host "Filtering blobs: listing folders to delete: " -NoNewline
+$filteredBlobs = $blobs | Where-Object {
+    $mainPrefix = $_.Name.Split("/")[0]
+    $blobsRoot.Name -contains $mainPrefix
+}
+$folders = $filteredBlobs |where{$_.Name -notmatch "\.[a-z0-9]{3,4}$"}
+write-host $folders.count
+
+write-host "Deleting folders."
+for ($i = $folders.Count - 1; $i -ge 0; $i--) {
+    #$Blob = $folders[$i]
+    $bName = $folders[$i].Name
+    #$matches = $filteredBlobs | Where-Object { $_.Name -like "$bName*" }
+
+    #if ($matches.Count -eq 1) {
+		write-host $i $bName
+        Remove-AzStorageBlob -Container $containerName -Blob $bName -Context $ctx
+        #$filteredBlobs = $filteredBlobs | Where-Object { $_.Name -ne $bName }
+    #}
+}
