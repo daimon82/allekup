@@ -1,0 +1,17 @@
+WITH TableList AS (
+    SELECT '' AS table_name, 0 as done
+	UNION SELECT 'inventtransorigin', 192035000
+    UNION SELECT 'inventtrans', 149090001
+	UNION SELECT 'whsworkinventtrans',72365078
+	UNION SELECT 'whsworkline',68350061
+	UNION SELECT 'inventdim',169710003
+	UNION SELECT 'whsworktrans',76020033
+)
+SELECT 
+    t.table_name,
+    --max(p.[rowcount]) as rows,
+	--t.done,
+	cast ((cast (t.done as float)/ cast (max(p.[rowcount]) as float))*100 as int) as progress
+FROM TableList AS t
+JOIN dbo.synapselinktablerowcount AS p ON p.tablename = t.table_name
+group by t.table_name,t.done;
