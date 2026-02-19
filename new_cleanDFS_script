@@ -1,0 +1,23 @@
+#Folder name and retention in days
+$folders = @{
+    "E:\DFS\EtailProfilesWTS_data\MERX\Parquet"    = 7
+    "D:\DFS\EtailArchiwum_data\usluga_zwrotu"  	   = 175 #default 30
+    "E:\DFS\EtailArchiwum_data\Fulfillment_Labels" = 90
+}
+
+foreach ($folder in $folders.Keys) {
+    $retentionDays = $folders[$folder]
+
+    Start-Process -FilePath "forfiles.exe" `
+        -ArgumentList "/p `"$folder`" /s /d -$retentionDays /c `"cmd /c del /q @path`"" `
+        -NoNewWindow -Wait
+
+
+    $cutoffDate = (Get-Date).AddDays(-$retentionDays)
+		
+	write-host "Wyszukuje puste katalogi"
+	$folders = Get-ChildItem -Attributes Directory -Path $folder -Recurse | Where-Object {$_.Name -ne 'DfsrPrivate' -and (Get-ChildItem -Path $_.FullName -Recurse -Force | Where-Object { !$_.PSIsContainer }) -eq $null } 
+		
+	write-host "Puste katalogi do skasowanie $($folders.count)"
+	$folders | Remove-Item -Force -Recurse
+}
