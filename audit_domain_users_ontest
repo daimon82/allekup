@@ -1,0 +1,42 @@
+# 1. Define your server list (or use Get-Content "C:\path\to\servers.txt")
+$Servers = @("tst-dvm-d98","tst-dvm-d99","t40691", "t40692","t41107.te4.local","t40983.te4.local","t40232.te4.local","t40992.te4.local","t40980.te4.local","t41095.te4.local","t41066.te4.local","t40981.te4.local","t40211","t41054.te4.local","t40960.te4.local","tst-dvm-003","tst-dvm-002","tst-dvm-001") 
+$x = 32 
+$Servers += 1..$x | ForEach-Object { "tst-dvm-d{0:D2}" -f $_ }
+$x = 21 
+$Servers += 1..$x | ForEach-Object { "tst-dvm-d365-{0:D2}" -f $_ }
+# 2. Define the target groups
+$TargetGroups = @("Administrators", "Users", "Remote Desktop Users")
+
+# 3. Execute the collection
+$Results = Invoke-Command -ComputerName $Servers -ScriptBlock {
+    param($Groups)
+    
+    $Output = foreach ($GroupName in $Groups) {
+        try {
+            # Get members of the specific local group
+            Get-LocalGroupMember -Name $GroupName -ErrorAction Stop | Select-Object @{
+                Name = "ServerName"; Expression = { $env:COMPUTERNAME }
+            },
+            @{ Name = "GroupName"; Expression = { $GroupName } },
+            Name, PrincipalSource, ObjectClass
+        } catch {
+            # Handle cases where the group might not exist or access is denied
+            [PSCustomObject]@{
+                ServerName      = $env:COMPUTERNAME
+                GroupName       = $GroupName
+                Name            = "ERROR: $($_.Exception.Message)"
+                PrincipalSource = "N/A"
+                ObjectClass     = "N/A"
+            }
+        }
+    }
+    return $Output
+} -ArgumentList (,$TargetGroups)
+
+# 4. Export to CSV
+$Results = $Results |where{$_.name -match "^allegrotest.*"} |select name|sort name -Unique
+$Results |ForEach-object{$_.name -replace "allegrotest\\",""}
+#| Select-Object ServerName, GroupName, Name, PrincipalSource, ObjectClass | 
+    #Export-Csv -Path "C:\temp\LocalGroupAudit.csv" -NoTypeInformation
+
+#Write-Host "Audit complete. Results saved to C:\temp\LocalGroupAudit.csv" -ForegroundColor Green
