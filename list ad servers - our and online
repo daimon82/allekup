@@ -1,0 +1,25 @@
+Import-Module ActiveDirectory
+
+$OUpaths = @(
+    "OU=Desktops,OU=Workstations,DC=yourdomain,DC=com",
+    "OU=Laptops,OU=Workstations,DC=yourdomain,DC=com",
+    "OU=Kiosks,OU=Retail,DC=yourdomain,DC=com"
+)
+
+Write-Host "Pobieranie danych z AD OUs..." -ForegroundColor Cyan
+
+$allComputers = foreach ($path in $OUpaths) {
+    Get-ADComputer -Filter "allegrogroupExtAttrib042 -eq 'AllegroRetailERP'" -SearchBase $path -Properties allegrogroupExtAttrib042 -WarningAction SilentlyContinue
+}
+
+$sortedComputers = $allComputers | Sort-Object Name
+
+Write-Host "Filtruje odpowiadające na ping..." -ForegroundColor Cyan
+Write-Host "--------------------------------------------------------"
+
+foreach ($comp in $sortedComputers) {
+    $isOnline = Test-Connection -ComputerName $comp.Name -Count 1 -Quiet -ErrorAction SilentlyContinue
+    if ($isOnline) {
+        Write-Output $comp.Name
+    }
+}
