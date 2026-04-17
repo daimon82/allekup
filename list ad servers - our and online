@@ -9,7 +9,7 @@ $OUpaths = @(
 Write-Host "Pobieranie danych z AD OUs..." -ForegroundColor Cyan
 
 $allComputers = foreach ($path in $OUpaths) {
-    Get-ADComputer -Filter "allegrogroupExtAttrib042 -eq 'AllegroRetailERP'" -SearchBase $path -Properties allegrogroupExtAttrib042 -WarningAction SilentlyContinue
+    Get-ADComputer -Filter "allegrogroupExtAttrib042 -eq ''" -SearchBase $path -Properties allegrogroupExtAttrib042 -WarningAction SilentlyContinue
 }
 
 $sortedComputers = $allComputers | Sort-Object Name
